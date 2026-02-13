@@ -1,74 +1,102 @@
 # notion-mcp-remote
 
-A remote MCP (Model Context Protocol) connector that exposes [notion-mcp](https://pypi.org/project/notion-mcp/) over Streamable HTTP with Notion OAuth 2.0 — making it available as a custom connector in Claude.ai, including mobile.
+A remote MCP connector for [notion-mcp](https://pypi.org/project/notion-mcp/) — connect Claude.ai to your Notion workspace in one step.
 
-## Why This Exists
+## For Users
 
-Anthropic's built-in Notion connector uses an older API surface. The `notion-mcp` package provides significantly better coverage of Notion's API (v2025-05-09), including:
+Paste this URL into Claude.ai to connect:
 
-- Full database CRUD with data source management
+```
+https://ldraney.ngrok-free.app/mcp
+```
+
+1. Go to [claude.ai](https://claude.ai) → **Settings** → **Connectors**
+2. Click **"Add custom connector"**
+3. Paste the URL above
+4. You'll be redirected to Notion — authorize access to **your own** workspace
+5. Done. Claude can now read and write your Notion pages, databases, and blocks.
+
+Works on desktop, iOS, and Android. Requires Claude Pro, Max, Team, or Enterprise.
+
+### What you get
+
+Full Notion API coverage via [notion-mcp](https://pypi.org/project/notion-mcp/) (v2025-05-09):
+
+- Page and database CRUD
 - Block-level operations (append, update, delete)
-- Page property retrieval and pagination
+- Property retrieval and pagination
 - Comment threading
+- Search across your workspace
 - User and team lookups
-- Enhanced Markdown content support
 
-**This repo** is a thin deployment wrapper that:
+### How it works
+
+When you add this connector, Claude.ai initiates a standard OAuth 2.0 flow with Notion. **You authenticate directly with Notion and choose which pages to share.** Your access token is stored encrypted on the server and used only to make Notion API calls on your behalf. The operator of this server never sees your Notion credentials — only the OAuth token Notion issues.
+
+```
+Claude.ai                    This Server                    Notion
+   │                            │                              │
+   │  1. Add connector (URL)    │                              │
+   │ ─────────────────────────► │                              │
+   │                            │                              │
+   │  2. Redirect to Notion     │                              │
+   │ ◄───────────────────────── │                              │
+   │                            │                              │
+   │  3. You authorize ─────────────────────────────────────► │
+   │     (your workspace,       │                              │
+   │      your pages)           │                              │
+   │                            │  4. Callback with auth code  │
+   │                            │ ◄──────────────────────────  │
+   │                            │                              │
+   │                            │  5. Exchange for token       │
+   │                            │ ─────────────────────────►   │
+   │                            │                              │
+   │                            │  6. Your access token        │
+   │                            │ ◄─────────────────────────   │
+   │                            │                              │
+   │  7. MCP tools now work     │  8. API calls to YOUR data   │
+   │ ◄────────────────────────► │ ◄──────────────────────────► │
+```
+
+---
+
+## For Operators
+
+Everything below is for deploying your own instance of this connector.
+
+### Why This Exists
+
+Anthropic's built-in Notion connector uses an older API surface. `notion-mcp` provides significantly better coverage. This repo is a thin deployment wrapper that:
+
 1. Imports all tools from `notion-mcp`
-2. Serves them over Streamable HTTP (required for remote MCP)
+2. Serves them over Streamable HTTP (required for Claude.ai connectors)
 3. Handles Notion's public OAuth 2.0 flow (per-user authentication)
 4. Deploys behind ngrok for free, stable HTTPS
 
-```
-┌─────────────────────────────────────────────────┐
-│  Claude.ai / Claude Mobile                      │
-│  (adds connector via Settings → Connectors)     │
-└──────────────────┬──────────────────────────────┘
-                   │ Streamable HTTP
-                   ▼
-┌─────────────────────────────────────────────────┐
-│  notion-mcp-remote (this repo)                  │
-│  ┌───────────────┐  ┌────────────────────────┐  │
-│  │ OAuth 2.0     │  │ FastMCP HTTP Transport │  │
-│  │ (Notion flow) │  │ (Streamable HTTP)      │  │
-│  └───────┬───────┘  └───────────┬────────────┘  │
-│          │                      │               │
-│          ▼                      ▼               │
-│  ┌──────────────────────────────────────────┐   │
-│  │  notion-mcp (PyPI package)               │   │
-│  │  All Notion API tools & domain logic     │   │
-│  └──────────────────────────────────────────┘   │
-└──────────────────┬──────────────────────────────┘
-                   │ ngrok tunnel
-                   ▼
-          https://ldraney.ngrok-free.app
-```
+Each user who adds your connector authenticates with **their own** Notion workspace. You provide the infrastructure; they bring their own data.
 
-## Prerequisites
+### Prerequisites
 
 - Python 3.11+
 - [ngrok account](https://ngrok.com/) (free tier — 1 static domain)
 - [Notion public integration](https://www.notion.so/profile/integrations) (OAuth client credentials)
 - A machine to host on (always-on Linux box, Raspberry Pi, etc.)
 
-## Notion OAuth Setup
+### Notion OAuth Setup
 
-Before deploying, you need a **public** Notion integration (not an internal one):
+You need a **public** Notion integration. This is what lets users OAuth into **their own** workspaces through your connector — the "public" label means your app can be authorized by any Notion user, not that their data becomes public.
 
 1. Go to [notion.so/profile/integrations](https://www.notion.so/profile/integrations)
 2. Click **"New integration"**
 3. Choose **"Public"** integration type
 4. Fill in required fields:
    - **Integration name**: e.g. "Notion MCP Remote"
-   - **Redirect URI**: `https://ldraney.ngrok-free.app/oauth/callback`
-   - **Company name**, **Website**, **Privacy policy URL**, **Terms of use URL**
-   - (These can point to your GitHub repo pages for now)
+   - **Redirect URI**: `https://<your-domain>/oauth/callback`
+   - **Company name**, **Website**, **Privacy policy URL**, **Terms of use URL** — Notion requires these even for hobby projects. Your GitHub repo URL and a simple privacy statement work fine.
 5. Under **Capabilities**, enable everything you want to expose
 6. Save and note your **OAuth client ID** and **OAuth client secret**
 
-> **Note**: Notion requires company info and policy URLs even for free/hobby integrations. A simple GitHub Pages site or even raw markdown files in your repo work fine.
-
-## Installation
+### Installation
 
 ```bash
 git clone https://github.com/ldraney/notion-mcp-remote.git
@@ -78,9 +106,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Configuration
-
-Copy the example env file and fill in your values:
+### Configuration
 
 ```bash
 cp .env.example .env
@@ -94,7 +120,7 @@ NOTION_OAUTH_CLIENT_SECRET=your_client_secret
 # Server
 HOST=127.0.0.1
 PORT=8000
-BASE_URL=https://ldraney.ngrok-free.app
+BASE_URL=https://your-domain.ngrok-free.app
 
 # Session secret (generate with: python -c "import secrets; print(secrets.token_hex(32))")
 SESSION_SECRET=your_random_secret
@@ -103,7 +129,45 @@ SESSION_SECRET=your_random_secret
 # REDIS_URL=redis://localhost:6379
 ```
 
-## Project Structure
+### Running
+
+```bash
+# Terminal 1: Start the MCP server
+source .venv/bin/activate
+python server.py
+
+# Terminal 2: Start the ngrok tunnel
+ngrok http 8000 --url=your-domain.ngrok-free.app
+```
+
+Verify:
+
+```bash
+curl https://your-domain.ngrok-free.app/health
+```
+
+Then share your connector URL with users: `https://your-domain.ngrok-free.app/mcp`
+
+### Deployment (Systemd)
+
+For always-on hosting on a Linux box:
+
+```bash
+# Install ngrok
+# Arch: yay -S ngrok
+# Other: https://ngrok.com/download
+ngrok config add-authtoken YOUR_TOKEN
+
+# Copy and enable service files
+sudo cp systemd/notion-mcp-remote.service /etc/systemd/system/
+sudo cp systemd/ngrok-notion.service /etc/systemd/system/
+# Edit paths in service files to match your setup
+sudo systemctl daemon-reload
+sudo systemctl enable --now notion-mcp-remote
+sudo systemctl enable --now ngrok-notion
+```
+
+### Project Structure
 
 ```
 notion-mcp-remote/
@@ -120,181 +184,16 @@ notion-mcp-remote/
 └── README.md
 ```
 
-## Running Locally
-
-### 1. Start the MCP server
+### Development
 
 ```bash
-source .venv/bin/activate
-python server.py
-```
-
-Server starts on `http://127.0.0.1:8000`.
-
-### 2. Start the ngrok tunnel
-
-In a separate terminal:
-
-```bash
-# First time: set up your free static domain at https://dashboard.ngrok.com/domains
-ngrok http 8000 --url=ldraney.ngrok-free.app
-```
-
-Your server is now reachable at `https://ldraney.ngrok-free.app`.
-
-### 3. Verify
-
-```bash
-# Health check
-curl https://ldraney.ngrok-free.app/health
-
-# MCP endpoint should be at:
-# https://ldraney.ngrok-free.app/mcp
-```
-
-## Deployment (Systemd)
-
-For always-on hosting on a Linux box:
-
-### Install ngrok
-
-```bash
-# Arch Linux
-yay -S ngrok
-# or download from https://ngrok.com/download
-
-# Authenticate
-ngrok config add-authtoken YOUR_TOKEN
-```
-
-### Set up systemd services
-
-```bash
-# Copy service files
-sudo cp systemd/notion-mcp-remote.service /etc/systemd/system/
-sudo cp systemd/ngrok-notion.service /etc/systemd/system/
-
-# Edit paths in service files to match your setup
-sudo systemctl daemon-reload
-
-# Enable and start
-sudo systemctl enable --now notion-mcp-remote
-sudo systemctl enable --now ngrok-notion
-
-# Check status
-sudo systemctl status notion-mcp-remote
-sudo systemctl status ngrok-notion
-```
-
-### systemd service files
-
-**notion-mcp-remote.service:**
-```ini
-[Unit]
-Description=Notion MCP Remote Server
-After=network.target
-
-[Service]
-Type=simple
-User=ldraney
-WorkingDirectory=/home/ldraney/notion-mcp-remote
-EnvironmentFile=/home/ldraney/notion-mcp-remote/.env
-ExecStart=/home/ldraney/notion-mcp-remote/.venv/bin/python server.py
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-**ngrok-notion.service:**
-```ini
-[Unit]
-Description=ngrok tunnel for Notion MCP Remote
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=ldraney
-ExecStart=/usr/bin/ngrok http 8000 --url=ldraney.ngrok-free.app --log=stdout
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-```
-
-## Adding to Claude.ai
-
-Once your server is running and the tunnel is active:
-
-1. Go to [claude.ai](https://claude.ai) → **Settings** → **Connectors**
-2. Click **"Add custom connector"**
-3. Paste your MCP server URL: `https://ldraney.ngrok-free.app/mcp`
-4. Claude will initiate the OAuth flow — you'll be redirected to Notion
-5. Select the Notion pages/databases you want Claude to access
-6. Authorize and you're connected
-
-The connector will automatically be available on Claude iOS and Android apps as well.
-
-> **Requires**: Claude Pro, Max, Team, or Enterprise plan
-
-## Architecture Notes
-
-### OAuth Flow
-
-The three-party OAuth dance works like this:
-
-```
-Claude.ai                    This Server                    Notion
-   │                            │                              │
-   │  1. User adds connector    │                              │
-   │ ─────────────────────────► │                              │
-   │                            │                              │
-   │  2. Redirect to Notion     │                              │
-   │ ◄───────────────────────── │                              │
-   │                            │                              │
-   │  3. User authorizes ──────────────────────────────────► │
-   │                            │                              │
-   │                            │  4. Callback with auth code  │
-   │                            │ ◄──────────────────────────  │
-   │                            │                              │
-   │                            │  5. Exchange for token       │
-   │                            │ ─────────────────────────►   │
-   │                            │                              │
-   │                            │  6. Access token             │
-   │                            │ ◄─────────────────────────   │
-   │                            │                              │
-   │  7. MCP tools now work     │  8. API calls with token     │
-   │ ◄────────────────────────► │ ◄──────────────────────────► │
-```
-
-### Token Storage
-
-Per-user Notion access tokens are stored locally by default (encrypted at rest using the `SESSION_SECRET`). For multi-instance deployments, configure `REDIS_URL` for shared token storage.
-
-### Stateless HTTP Mode
-
-The server uses FastMCP's stateless HTTP mode — no WebSocket connections, no session state on the server. Each request includes authentication context, making it horizontally scalable if needed.
-
-## Development
-
-```bash
-# Install dev dependencies
 pip install -r requirements-dev.txt
-
-# Run tests
 pytest
-
-# Run with auto-reload
 python server.py --reload
-
-# Lint
 ruff check .
 ```
 
-## Makefile
+### Makefile
 
 ```bash
 make run          # Start the server
@@ -308,7 +207,7 @@ make install      # Install dependencies
 ## Troubleshooting
 
 ### "Connector failed to connect" in Claude.ai
-- Verify ngrok tunnel is running: `curl https://ldraney.ngrok-free.app/health`
+- Verify ngrok tunnel is running: `curl https://your-domain.ngrok-free.app/health`
 - Check server logs: `journalctl -u notion-mcp-remote -f`
 - Ensure your Notion OAuth redirect URI matches exactly
 
