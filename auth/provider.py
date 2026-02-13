@@ -39,7 +39,10 @@ ACCESS_TOKEN_LIFETIME = 86400  # 24 hours
 
 
 class NotionOAuthProvider:
-    """OAuth provider that proxies to Notion for user authorization."""
+    """OAuth provider that proxies to Notion for user authorization.
+
+    Implements OAuthAuthorizationServerProvider[AuthorizationCode, RefreshToken, AccessToken]
+    """
 
     def __init__(
         self,
@@ -95,6 +98,7 @@ class NotionOAuthProvider:
                 "scopes": params.scopes,
                 "redirect_uri_provided_explicitly": params.redirect_uri_provided_explicitly,
                 "resource": str(params.resource) if params.resource else None,
+                "expires_at": time.time() + 600,  # 10 minutes
             },
         )
 
@@ -133,7 +137,17 @@ class NotionOAuthProvider:
                 },
                 auth=(self.notion_client_id, self.notion_client_secret),
             )
-            resp.raise_for_status()
+            try:
+                resp.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                logger.error(
+                    "Notion token exchange failed: %s %s",
+                    exc.response.status_code,
+                    exc.response.text,
+                )
+                raise ValueError(
+                    "Failed to exchange authorization code with Notion"
+                ) from exc
             notion_data = resp.json()
 
         notion_token = notion_data["access_token"]
@@ -231,6 +245,7 @@ class NotionOAuthProvider:
                 "client_id": client.client_id,
                 "scopes": scopes,
                 "access_token": access_token,
+                "resource": data.get("resource"),
             },
         )
 
@@ -299,37 +314,32 @@ class NotionOAuthProvider:
 
         notion_token = data["notion_token"]
         effective_scopes = scopes if scopes else data.get("scopes") or []
+        resource = data.get("resource")
 
-        # Rotate tokens
+        # Rotate tokens atomically
         new_access_token = secrets.token_urlsafe(32)
         new_refresh_token = secrets.token_urlsafe(32)
         expires_at = int(time.time()) + ACCESS_TOKEN_LIFETIME
 
-        # Delete old tokens
-        old_access = data.get("access_token")
-        if old_access:
-            self.store.delete_access_token(old_access)
-        self.store.delete_refresh_token(refresh_token.token)
-
-        # Store new tokens
-        self.store.store_access_token(
-            new_access_token,
-            {
+        self.store.rotate_tokens(
+            old_access_token=data.get("access_token"),
+            old_refresh_token=refresh_token.token,
+            new_access_token=new_access_token,
+            new_access_data={
                 "notion_token": notion_token,
                 "client_id": client.client_id,
                 "scopes": effective_scopes,
                 "expires_at": expires_at,
                 "refresh_token": new_refresh_token,
-                "resource": None,
+                "resource": resource,
             },
-        )
-        self.store.store_refresh_token(
-            new_refresh_token,
-            {
+            new_refresh_token=new_refresh_token,
+            new_refresh_data={
                 "notion_token": notion_token,
                 "client_id": client.client_id,
                 "scopes": effective_scopes,
                 "access_token": new_access_token,
+                "resource": resource,
             },
         )
 

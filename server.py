@@ -132,7 +132,8 @@ async def notion_oauth_callback(request: Request) -> Response:
     except Exception as exc:
         logger.exception("Unexpected error in OAuth callback")
         return JSONResponse(
-            {"error": "internal_error", "detail": str(exc)}, status_code=500
+            {"error": "internal_error", "detail": "An internal error occurred"},
+            status_code=500,
         )
 
 

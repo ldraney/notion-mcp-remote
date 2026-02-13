@@ -18,12 +18,13 @@ _request_client: ContextVar[NotionClient | None] = ContextVar(
 
 
 def patched_get_client() -> NotionClient:
-    """Return the per-request NotionClient, or fall back to env-based client."""
+    """Return the per-request NotionClient set by the OAuth flow."""
     client = _request_client.get()
-    if client is not None:
-        return client
-    # Fallback: env-based client (for local dev without OAuth)
-    return NotionClient()
+    if client is None:
+        raise RuntimeError(
+            "No NotionClient set for this request — is OAuth configured?"
+        )
+    return client
 
 
 def set_client_for_request(api_key: str) -> None:

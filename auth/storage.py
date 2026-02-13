@@ -9,13 +9,17 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
 import os
+import tempfile
 import threading
 import time
 from pathlib import Path
 from typing import Any
 
 from cryptography.fernet import Fernet
+
+logger = logging.getLogger(__name__)
 
 
 class TokenStore:
@@ -25,6 +29,7 @@ class TokenStore:
         key = base64.urlsafe_b64encode(hashlib.sha256(secret.encode()).digest())
         self._fernet = Fernet(key)
         self._path = Path(data_dir) / "tokens.json"
+        # threading.Lock is fine here — file I/O is fast for small JSON and we're single-process
         self._lock = threading.Lock()
         self._data: dict[str, Any] = {
             "clients": {},
@@ -46,7 +51,9 @@ class TokenStore:
                 decrypted = self._fernet.decrypt(encrypted)
                 self._data = json.loads(decrypted)
             except Exception:
-                # Corrupt or wrong key — start fresh
+                logger.warning(
+                    "Could not load token store (corrupt or wrong key), starting fresh"
+                )
                 self._data = {
                     "clients": {},
                     "pending_auth": {},
@@ -58,7 +65,16 @@ class TokenStore:
     def _save(self) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         encrypted = self._fernet.encrypt(json.dumps(self._data).encode())
-        self._path.write_bytes(encrypted)
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=str(self._path.parent))
+        try:
+            os.write(tmp_fd, encrypted)
+            os.fsync(tmp_fd)
+            os.close(tmp_fd)
+            os.replace(tmp_path, str(self._path))
+        except:
+            os.close(tmp_fd)
+            os.unlink(tmp_path)
+            raise
 
     # ------------------------------------------------------------------
     # Registered clients (Dynamic Client Registration)
@@ -84,7 +100,13 @@ class TokenStore:
 
     def get_pending_auth(self, state: str) -> dict | None:
         with self._lock:
-            return self._data["pending_auth"].get(state)
+            data = self._data["pending_auth"].get(state)
+            if data and data.get("expires_at", 0) < time.time():
+                # Expired
+                self._data["pending_auth"].pop(state, None)
+                self._save()
+                return None
+            return data
 
     def delete_pending_auth(self, state: str) -> None:
         with self._lock:
@@ -154,6 +176,28 @@ class TokenStore:
     def delete_refresh_token(self, token: str) -> None:
         with self._lock:
             self._data["refresh_tokens"].pop(token, None)
+            self._save()
+
+    # ------------------------------------------------------------------
+    # Atomic token rotation
+    # ------------------------------------------------------------------
+
+    def rotate_tokens(
+        self,
+        old_access_token: str | None,
+        old_refresh_token: str,
+        new_access_token: str,
+        new_access_data: dict,
+        new_refresh_token: str,
+        new_refresh_data: dict,
+    ) -> None:
+        """Atomically rotate access and refresh tokens."""
+        with self._lock:
+            if old_access_token:
+                self._data["access_tokens"].pop(old_access_token, None)
+            self._data["refresh_tokens"].pop(old_refresh_token, None)
+            self._data["access_tokens"][new_access_token] = new_access_data
+            self._data["refresh_tokens"][new_refresh_token] = new_refresh_data
             self._save()
 
     # ------------------------------------------------------------------
