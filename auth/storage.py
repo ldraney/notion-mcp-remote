@@ -1,0 +1,177 @@
+"""Encrypted file-based token and state persistence.
+
+Stores OAuth state (pending auth flows, auth codes, access/refresh tokens,
+registered clients) in a Fernet-encrypted JSON file under data/.
+"""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import json
+import os
+import threading
+import time
+from pathlib import Path
+from typing import Any
+
+from cryptography.fernet import Fernet
+
+
+class TokenStore:
+    """Thread-safe, Fernet-encrypted JSON file store for OAuth state."""
+
+    def __init__(self, secret: str, data_dir: str = "data") -> None:
+        key = base64.urlsafe_b64encode(hashlib.sha256(secret.encode()).digest())
+        self._fernet = Fernet(key)
+        self._path = Path(data_dir) / "tokens.json"
+        self._lock = threading.Lock()
+        self._data: dict[str, Any] = {
+            "clients": {},
+            "pending_auth": {},
+            "auth_codes": {},
+            "access_tokens": {},
+            "refresh_tokens": {},
+        }
+        self._load()
+
+    # ------------------------------------------------------------------
+    # Persistence
+    # ------------------------------------------------------------------
+
+    def _load(self) -> None:
+        if self._path.exists():
+            try:
+                encrypted = self._path.read_bytes()
+                decrypted = self._fernet.decrypt(encrypted)
+                self._data = json.loads(decrypted)
+            except Exception:
+                # Corrupt or wrong key — start fresh
+                self._data = {
+                    "clients": {},
+                    "pending_auth": {},
+                    "auth_codes": {},
+                    "access_tokens": {},
+                    "refresh_tokens": {},
+                }
+
+    def _save(self) -> None:
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        encrypted = self._fernet.encrypt(json.dumps(self._data).encode())
+        self._path.write_bytes(encrypted)
+
+    # ------------------------------------------------------------------
+    # Registered clients (Dynamic Client Registration)
+    # ------------------------------------------------------------------
+
+    def store_client(self, client_id: str, client_data: dict) -> None:
+        with self._lock:
+            self._data["clients"][client_id] = client_data
+            self._save()
+
+    def get_client(self, client_id: str) -> dict | None:
+        with self._lock:
+            return self._data["clients"].get(client_id)
+
+    # ------------------------------------------------------------------
+    # Pending auth flows (authorize → Notion callback)
+    # ------------------------------------------------------------------
+
+    def store_pending_auth(self, state: str, auth_data: dict) -> None:
+        with self._lock:
+            self._data["pending_auth"][state] = auth_data
+            self._save()
+
+    def get_pending_auth(self, state: str) -> dict | None:
+        with self._lock:
+            return self._data["pending_auth"].get(state)
+
+    def delete_pending_auth(self, state: str) -> None:
+        with self._lock:
+            self._data["pending_auth"].pop(state, None)
+            self._save()
+
+    # ------------------------------------------------------------------
+    # Authorization codes (our code → notion token mapping)
+    # ------------------------------------------------------------------
+
+    def store_auth_code(self, code: str, code_data: dict) -> None:
+        with self._lock:
+            self._data["auth_codes"][code] = code_data
+            self._save()
+
+    def get_auth_code(self, code: str) -> dict | None:
+        with self._lock:
+            data = self._data["auth_codes"].get(code)
+            if data and data.get("expires_at", 0) < time.time():
+                # Expired
+                self._data["auth_codes"].pop(code, None)
+                self._save()
+                return None
+            return data
+
+    def delete_auth_code(self, code: str) -> None:
+        with self._lock:
+            self._data["auth_codes"].pop(code, None)
+            self._save()
+
+    # ------------------------------------------------------------------
+    # Access tokens
+    # ------------------------------------------------------------------
+
+    def store_access_token(self, token: str, token_data: dict) -> None:
+        with self._lock:
+            self._data["access_tokens"][token] = token_data
+            self._save()
+
+    def get_access_token(self, token: str) -> dict | None:
+        with self._lock:
+            data = self._data["access_tokens"].get(token)
+            if data and data.get("expires_at") and data["expires_at"] < time.time():
+                self._data["access_tokens"].pop(token, None)
+                self._save()
+                return None
+            return data
+
+    def delete_access_token(self, token: str) -> None:
+        with self._lock:
+            self._data["access_tokens"].pop(token, None)
+            self._save()
+
+    # ------------------------------------------------------------------
+    # Refresh tokens
+    # ------------------------------------------------------------------
+
+    def store_refresh_token(self, token: str, token_data: dict) -> None:
+        with self._lock:
+            self._data["refresh_tokens"][token] = token_data
+            self._save()
+
+    def get_refresh_token(self, token: str) -> dict | None:
+        with self._lock:
+            return self._data["refresh_tokens"].get(token)
+
+    def delete_refresh_token(self, token: str) -> None:
+        with self._lock:
+            self._data["refresh_tokens"].pop(token, None)
+            self._save()
+
+    # ------------------------------------------------------------------
+    # Bulk cleanup helpers
+    # ------------------------------------------------------------------
+
+    def delete_tokens_for_access_token(self, access_token: str) -> None:
+        """Delete both access and associated refresh token."""
+        with self._lock:
+            token_data = self._data["access_tokens"].pop(access_token, None)
+            if token_data and "refresh_token" in token_data:
+                self._data["refresh_tokens"].pop(token_data["refresh_token"], None)
+            self._save()
+
+    def delete_tokens_for_refresh_token(self, refresh_token: str) -> None:
+        """Delete both refresh and associated access token."""
+        with self._lock:
+            token_data = self._data["refresh_tokens"].pop(refresh_token, None)
+            if token_data and "access_token" in token_data:
+                self._data["access_tokens"].pop(token_data["access_token"], None)
+            self._save()

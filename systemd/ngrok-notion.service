@@ -1,0 +1,14 @@
+[Unit]
+Description=ngrok tunnel for Notion MCP Remote
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ldraney
+ExecStart=/usr/bin/ngrok http 8000 --url=ldraney.ngrok-free.app --log=stdout
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

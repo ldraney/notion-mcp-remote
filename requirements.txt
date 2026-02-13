@@ -1,0 +1,4 @@
+ldraney-notion-mcp>=0.1.12
+cryptography
+python-dotenv
+httpx
