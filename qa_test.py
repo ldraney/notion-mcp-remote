@@ -67,10 +67,16 @@ class TestContext:
 
 
 def parse_sse_response(text: str) -> dict:
-    """Parse SSE response and extract JSON-RPC result."""
+    """Parse SSE response and extract the JSON-RPC result.
+
+    Skips empty data lines (SSE priming events) and returns the first
+    valid JSON payload.
+    """
     for line in text.strip().split("\n"):
-        if line.startswith("data: "):
-            return json.loads(line[6:])
+        if line.startswith("data:"):
+            payload = line[5:].strip()
+            if payload:
+                return json.loads(payload)
     raise ValueError(f"No data line found in SSE response: {text[:200]}")
 
 
@@ -146,7 +152,7 @@ def run_test(
     token: str,
     tool_name: str,
     arguments: dict | None = None,
-    check: callable = None,
+    check: callable | None = None,
 ) -> dict | None:
     """Run a single tool test, record result."""
     t0 = time.monotonic()
