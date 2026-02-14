@@ -85,6 +85,13 @@ mcp.settings.host = HOST
 mcp.settings.port = PORT
 mcp.settings.stateless_http = True
 
+# Allow the public hostname through transport security
+from urllib.parse import urlparse  # noqa: E402
+
+_host = urlparse(BASE_URL).hostname
+if _host:
+    mcp.settings.transport_security.allowed_hosts = [_host]
+
 # ---------------------------------------------------------------------------
 # 6. Custom routes (health check + Notion OAuth callback)
 # ---------------------------------------------------------------------------
