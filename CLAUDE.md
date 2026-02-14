@@ -16,6 +16,7 @@ Three-party OAuth proxy: Claude.ai ↔ this server ↔ Notion OAuth.
 - The `mcp` FastMCP instance is imported from `notion_mcp` and reconfigured at runtime (auth settings, host/port, stateless mode).
 - `load_access_token()` in the provider sets the `ContextVar` so tool handlers get the correct per-user `NotionClient`.
 - All 6 tool modules (`blocks`, `comments`, `databases`, `pages`, `search`, `users`) import `get_client` from `notion_mcp.server` — the patch replaces it in each module's namespace.
+- `BASE_URL` hostname is added to `transport_security.allowed_hosts` — without this, MCP rejects requests with 421 Misdirected Request.
 
 ## Running
 
@@ -23,7 +24,8 @@ Three-party OAuth proxy: Claude.ai ↔ this server ↔ Notion OAuth.
 cp .env.example .env   # fill in values
 make install
 make run               # start server on :8000
-make tunnel            # start ngrok in separate terminal
+
+# Expose via any HTTPS tunnel (Tailscale Funnel, ngrok, Cloudflare Tunnel, etc.)
 ```
 
 ## Testing

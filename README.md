@@ -7,7 +7,7 @@ A remote MCP connector for [notion-mcp](https://pypi.org/project/notion-mcp/) �
 Paste this URL into Claude.ai to connect:
 
 ```
-https://ldraney.ngrok-free.app/mcp
+https://archbox.tail5b443a.ts.net/mcp
 ```
 
 1. Go to [claude.ai](https://claude.ai) → **Settings** → **Connectors**
@@ -71,14 +71,14 @@ Anthropic's built-in Notion connector uses an older API surface. `notion-mcp` pr
 1. Imports all tools from `notion-mcp`
 2. Serves them over Streamable HTTP (required for Claude.ai connectors)
 3. Handles Notion's public OAuth 2.0 flow (per-user authentication)
-4. Deploys behind ngrok for free, stable HTTPS
+4. Deploys behind any HTTPS tunnel (Tailscale Funnel, ngrok, Cloudflare Tunnel, etc.)
 
 Each user who adds your connector authenticates with **their own** Notion workspace. You provide the infrastructure; they bring their own data.
 
 ### Prerequisites
 
 - Python 3.11+
-- [ngrok account](https://ngrok.com/) (free tier — 1 static domain)
+- An HTTPS tunnel ([Tailscale Funnel](https://tailscale.com/kb/1223/funnel) (free), [ngrok](https://ngrok.com/), or [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/))
 - [Notion public integration](https://www.notion.so/profile/integrations) (OAuth client credentials)
 - A machine to host on (always-on Linux box, Raspberry Pi, etc.)
 
@@ -120,7 +120,7 @@ NOTION_OAUTH_CLIENT_SECRET=your_client_secret
 # Server
 HOST=127.0.0.1
 PORT=8000
-BASE_URL=https://your-domain.ngrok-free.app
+BASE_URL=https://your-public-domain
 
 # Session secret (generate with: python -c "import secrets; print(secrets.token_hex(32))")
 SESSION_SECRET=your_random_secret
@@ -136,36 +136,32 @@ SESSION_SECRET=your_random_secret
 source .venv/bin/activate
 python server.py
 
-# Terminal 2: Start the ngrok tunnel
-ngrok http 8000 --url=your-domain.ngrok-free.app
+# Terminal 2: Expose via HTTPS tunnel (pick one)
+sudo tailscale funnel --bg 8000          # Tailscale Funnel (free, stable URL)
+ngrok http 8000 --url=your-domain        # ngrok (requires paid plan for static domain)
 ```
 
 Verify:
 
 ```bash
-curl https://your-domain.ngrok-free.app/health
+curl https://your-public-domain/health
 ```
 
-Then share your connector URL with users: `https://your-domain.ngrok-free.app/mcp`
+Then share your connector URL with users: `https://your-public-domain/mcp`
 
 ### Deployment (Systemd)
 
 For always-on hosting on a Linux box:
 
 ```bash
-# Install ngrok
-# Arch: yay -S ngrok
-# Other: https://ngrok.com/download
-ngrok config add-authtoken YOUR_TOKEN
-
-# Copy and enable service files
+# Copy and enable service file
 sudo cp systemd/notion-mcp-remote.service /etc/systemd/system/
-sudo cp systemd/ngrok-notion.service /etc/systemd/system/
-# Edit paths in service files to match your setup
+# Edit paths in the service file to match your setup
 sudo systemctl daemon-reload
 sudo systemctl enable --now notion-mcp-remote
-sudo systemctl enable --now ngrok-notion
 ```
+
+For the HTTPS tunnel, set up a separate systemd service or use your tunnel provider's daemon mode (e.g. `tailscale funnel --bg`, `ngrok service install`).
 
 ### Project Structure
 
@@ -174,7 +170,7 @@ notion-mcp-remote/
 ├── server.py              # Main entrypoint — FastMCP HTTP server
 ├── auth/
 │   ├── __init__.py
-│   ├── oauth.py           # Notion OAuth 2.0 flow handlers
+│   ├── provider.py        # Notion OAuth 2.0 flow handlers
 │   └── storage.py         # Per-user token storage (file or Redis)
 ├── requirements.txt
 ├── .env.example
@@ -207,12 +203,15 @@ make install      # Install dependencies
 ## Troubleshooting
 
 ### "Connector failed to connect" in Claude.ai
-- Verify ngrok tunnel is running: `curl https://your-domain.ngrok-free.app/health`
+- Verify tunnel is running: `curl https://your-public-domain/health`
 - Check server logs: `journalctl -u notion-mcp-remote -f`
 - Ensure your Notion OAuth redirect URI matches exactly
 
+### 421 Misdirected Request
+- The server automatically adds `BASE_URL`'s hostname to the MCP transport security `allowed_hosts`. Make sure `BASE_URL` in `.env` matches your public domain exactly.
+
 ### OAuth callback errors
-- Confirm `BASE_URL` in `.env` matches your ngrok domain exactly
+- Confirm `BASE_URL` in `.env` matches your public domain exactly
 - Check that your Notion integration is set to **Public** (not Internal)
 - Verify redirect URI in Notion integration settings matches `{BASE_URL}/oauth/callback`
 
@@ -220,18 +219,13 @@ make install      # Install dependencies
 - Notion access tokens don't expire by default, but users can revoke access
 - If a user revokes, they'll need to re-authorize through Claude's connector settings
 
-### ngrok free tier limits
-- 1 static domain (sufficient for this use case)
-- Rate limits apply but are generous for MCP connector traffic
-- If you hit limits, consider upgrading or switching to Cloudflare Tunnel with a custom domain
-
 ## Roadmap
 
-- [ ] Core HTTP wrapper with FastMCP Streamable HTTP transport
-- [ ] Notion public OAuth 2.0 flow
-- [ ] Per-user token storage and injection
-- [ ] Claude.ai connector integration testing
-- [ ] Encrypted token storage at rest
+- [x] Core HTTP wrapper with FastMCP Streamable HTTP transport
+- [x] Notion public OAuth 2.0 flow
+- [x] Per-user token storage and injection
+- [x] Claude.ai connector integration testing
+- [x] Encrypted token storage at rest
 - [ ] Redis adapter for multi-instance deployments
 - [ ] Health check and monitoring endpoints
 - [ ] Rate limiting and abuse prevention
