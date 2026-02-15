@@ -1,6 +1,6 @@
 # notion-mcp-remote
 
-Remote MCP connector wrapping `ldraney-notion-mcp` with Notion OAuth 2.0 over Streamable HTTP.
+Remote MCP connector wrapping `notion-mcp-ldraney` with Notion OAuth 2.0 over Streamable HTTP.
 
 ## Architecture
 

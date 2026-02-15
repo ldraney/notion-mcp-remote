@@ -1,6 +1,6 @@
 # notion-mcp-remote
 
-A remote MCP connector for [notion-mcp](https://pypi.org/project/notion-mcp/) — connect Claude.ai to your Notion workspace in one step.
+A remote MCP connector for [notion-mcp](https://pypi.org/project/notion-mcp-ldraney/) — connect Claude.ai to your Notion workspace in one step.
 
 ## For Users
 
@@ -20,7 +20,7 @@ Works on desktop, iOS, and Android. Requires Claude Pro, Max, Team, or Enterpris
 
 ### What you get
 
-Full Notion API coverage via [notion-mcp](https://pypi.org/project/notion-mcp/) (v2025-05-09):
+Full Notion API coverage via [notion-mcp](https://pypi.org/project/notion-mcp-ldraney/) (v2025-05-09):
 
 - Page and database CRUD
 - Block-level operations (append, update, delete)
@@ -234,7 +234,7 @@ make install      # Install dependencies
 
 ## Related Projects
 
-- [notion-mcp](https://pypi.org/project/notion-mcp/) — The underlying MCP server with full Notion API coverage (also by [@ldraney](https://github.com/ldraney))
+- [notion-mcp](https://pypi.org/project/notion-mcp-ldraney/) — The underlying MCP server with full Notion API coverage (also by [@ldraney](https://github.com/ldraney))
 - [FastMCP](https://gofastmcp.com) — The MCP framework powering the HTTP transport
 - [MCP Specification](https://modelcontextprotocol.io) — The Model Context Protocol standard
 

@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.backends"
+
+[project]
+name = "notion-mcp-remote-ldraney"
+version = "0.1.0"
+description = "Remote MCP connector wrapping notion-mcp with Notion OAuth 2.0 over Streamable HTTP"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [
+    { name = "Lucas Draney", email = "ldraney@users.noreply.github.com" },
+]
+dependencies = [
+    "notion-mcp-ldraney>=0.1.12,<1.0",
+    "cryptography>=46.0.5,<47.0",
+    "python-dotenv>=1.2.1,<2.0",
+    "httpx>=0.28.1,<1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/ldraney/notion-mcp-remote"
+Repository = "https://github.com/ldraney/notion-mcp-remote"
+Issues = "https://github.com/ldraney/notion-mcp-remote/issues"
