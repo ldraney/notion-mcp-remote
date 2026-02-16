@@ -1,3 +1,7 @@
+[![PyPI](https://img.shields.io/pypi/v/notion-mcp-remote-ldraney)](https://pypi.org/project/notion-mcp-remote-ldraney/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+
 # notion-mcp-remote
 
 A remote MCP connector for [notion-mcp](https://pypi.org/project/notion-mcp-ldraney/) — connect Claude.ai to your Notion workspace in one step.
@@ -218,6 +222,10 @@ make install      # Install dependencies
 ### Token refresh issues
 - Notion access tokens don't expire by default, but users can revoke access
 - If a user revokes, they'll need to re-authorize through Claude's connector settings
+
+## Privacy
+
+See [PRIVACY.md](PRIVACY.md) for our privacy policy.
 
 ## Roadmap
 
