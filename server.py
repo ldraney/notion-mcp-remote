@@ -83,7 +83,7 @@ mcp._token_verifier = ProviderTokenVerifier(provider)
 
 mcp.settings.host = HOST
 mcp.settings.port = PORT
-mcp.settings.stateless_http = True
+mcp.settings.stateless_http = False
 
 # Allow the public hostname (and any additional internal hostnames) through
 # transport security. ADDITIONAL_ALLOWED_HOSTS is comma-separated, used for
@@ -101,6 +101,17 @@ if _extra:
     _allowed.extend(h.strip() for h in _extra.split(",") if h.strip())
 if _allowed:
     mcp.settings.transport_security.allowed_hosts = _allowed
+
+# ---------------------------------------------------------------------------
+# 5b. Monkey-patch RequireAuthMiddleware → MethodAwareAuthMiddleware
+#     so GET /mcp (SSE notifications) bypasses OAuth bearer auth.
+#     The MCP SDK validates session_id on GET internally.
+# ---------------------------------------------------------------------------
+
+import mcp.server.fastmcp.server as _fastmcp_module  # noqa: E402
+from auth.discovery_auth import MethodAwareAuthMiddleware  # noqa: E402
+
+_fastmcp_module.RequireAuthMiddleware = MethodAwareAuthMiddleware
 
 # ---------------------------------------------------------------------------
 # 6. Custom routes (health check + Notion OAuth callback)
